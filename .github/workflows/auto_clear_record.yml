@@ -24,6 +24,6 @@ jobs:
         uses: Mattraks/delete-workflow-runs@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          repository: 'FlameTech6/Zeep_Sport_Robot'
+          repository: 'yfishyon/zeepp'
           retain_days: 7
           keep_minimum_runs: 6
