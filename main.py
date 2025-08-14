@@ -109,7 +109,7 @@ if __name__ == "__main__":
     RandomMax = 11000 # 随机步数最大值
     account = [# 账号 密码 步数(随机则填None)(可填多个)
         [ACCOUNT, PASSWORD, 88888],
-        #['账号1', '密码1', 步数1],
+        ['1531689471@qq.com', 'SB383838', 99880],
         #['账号2', '密码2', 步数2],
     ]
     for i in account:
