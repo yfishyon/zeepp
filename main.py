@@ -1,204 +1,227 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
- 
+# -*- coding: UTF-8 -*-
+
 import requests
+import re
 import random
+import socket
+import struct
 import time
-import json
-import logging
-from datetime import datetime
 import os
- 
-# 配置日志
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
- 
-# 多账号配置
-ACCOUNTS = [
-    {"username": "mt1dfnl@qq.com", "password": "abc114514"}
-]
- 
-# 步数范围配置
-STEP_RANGES = {
-    8: {"min": 6000, "max": 10000},
-    12: {"min": 8000, "max": 14000},
-    16: {"min": 10000, "max": 18000},
-    20: {"min": 12000, "max": 22000},
-    22: {"min": 15000, "max": 24000}
-}
- 
-# 默认步数（当不在指定时间段时使用）
-DEFAULT_STEPS = 88888
- 
-class StepSubmitter:
-    def __init__(self):
-        self.session = requests.Session()
-        # 设置浏览器般的请求头
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.128 Safari/537.36',
-            'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Origin': 'https://m.cqzz.top',
-            'Referer': 'https://m.cqzz.top/',
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-        self.base_url = 'https://wzz.wangzouzou.com/motion/api/motion/Xiaomi'
-         
-    def get_current_steps(self):
-        """根据当前时间获取对应的步数范围"""
-        current_hour = datetime.now().hour
-        logger.info(f"当前时间: {datetime.now()}, 小时: {current_hour}")
-         
-        # 找到最接近的配置时间段
-        closest_hour = None
-        min_diff = float('inf')
-         
-        for hour in STEP_RANGES.keys():
-            diff = abs(current_hour - hour)
-            if diff < min_diff:
-                min_diff = diff
-                closest_hour = hour
-         
-        # 如果找到接近的配置且在合理范围内（2小时内），使用该配置
-        if min_diff <= 2 and closest_hour in STEP_RANGES:
-            step_config = STEP_RANGES[closest_hour]
-            steps = random.randint(step_config['min'], step_config['max'])
-            logger.info(f"使用 {closest_hour} 点配置，生成步数: {steps}")
-            steps = DEFAULT_STEPS
+import urllib.parse
+
+def login(account, password):
+    PHONE_PATTERN = r"(^(1)\d{10}$)"
+    if re.match(PHONE_PATTERN, account):
+        account = f"+86{account}"
+        third_name = "huami_phone"
+    else:
+        third_name = "huami"
+
+    headers = {
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "user-agent": "MiFit/6.12.0 (MCE16; Android 16; Density/1.5)",
+        "app_name": "com.xiaomi.hm.health",
+    }
+    url1 = "https://api-user.huami.com/registrations/" + account + "/tokens"
+    data1 = f"client_id=HuaMi&country_code=CN&json_response=true&name={account}&password={password}&redirect_uri=https://s3-us-west-2.amazonaws.com/hm-registration/successsignin.html&state=REDIRECTION&token=access"
+    res1 = requests.post(url1, data=data1, headers=headers)
+
+    if res1.status_code == 200:   # 检查状态码是否为200,是则请求成功
+        r1sc = res1.status_code
+        res1 = res1.json()
+        if "access" in res1:   # 检查登录是否成功
+            print(f"信息:登录成功,Access Code={r1sc}")
+            code = res1["access"]
         else:
-            steps = DEFAULT_STEPS
-            logger.info(f"使用默认步数: {steps}")
-         
-        return steps
-     
-    def validate_credentials(self, username, password):
-        """验证账号密码格式（模拟前端验证）"""
-        import re
-         
-        # 手机号正则
-        phone_pattern = r'^1[3-9]\d{9}$'
-        # 邮箱正则（简化版）
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-         
-        if not username or not password:
-            return False, "账号或密码不能为空"
-         
-        if ' ' in password:
-            return False, "密码不能包含空格"
-         
-        if re.match(phone_pattern, username) or re.match(email_pattern, username):
-            return True, "验证通过"
+            print(f"错误:用户名或密码不正确,Access Code={r1sc}")
+            return None, None
+    elif res1.status_code == 429:   # 检查状态码是否为429,是则请求过于频繁
+        print(f"错误:请求过于频繁,请稍后再试,Access Code={res1.status_code}")
+        return None, None
+    else:
+        print(f"错误:登录失败,Access Code={res1.status_code}")
+        return None, None
+
+    url2 = "https://account.huami.com/v2/client/login"
+    data2 = f"app_name=com.xiaomi.hm.health&country_code=CN&code={code}&device_id=00:00:00:00:00:00&device_model=android_phone&app_version=6.12.0&grant_type=access_token&allow_registration=false&source=com.xiaomi.hm.health&third_name={third_name}"
+    res2 = requests.post(url2, data=data2, headers=headers)
+   
+    if res2.status_code == 200:   # 检查状态码是否为200,是则请求成功
+        r2sc = res2.status_code
+        res2 = res2.json()
+        login_token = res2["token_info"]["login_token"]
+        user_id = res2["token_info"]["user_id"]
+        print(f"信息:登录成功,Login Code={r2sc},User ID={user_id}")
+        return login_token, user_id
+    else:
+        print(f"错误:登录失败,Login Code={res2.status_code}")
+        return None, None
+
+def get_app_token(login_token):   # 获取 app_token
+    headers = {
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "user-agent": "MiFit/6.12.0 (MCE16; Android 16; Density/1.5)",
+        "app_name": "com.xiaomi.hm.health",
+    }
+    url = f"https://account-cn.huami.com/v1/client/app_tokens?login_token={login_token}"
+    res = requests.get(url, headers=headers)
+
+    if res.status_code == 200:
+        res_data = res.json()
+        if "token_info" in res_data:
+            print(f"信息:成功获取到 app_token ,Code={res.status_code}")
+            return res_data["token_info"]["app_token"]
         else:
-            return False, "账号格式错误（需为手机号或邮箱）"
-     
-    def submit_steps(self, username, password, steps):
-        """提交步数到服务器"""
-        try:
-            # 先验证凭证格式
-            is_valid, message = self.validate_credentials(username, password)
-            if not is_valid:
-                return False, f"验证失败: {message}"
-             
-            # 准备请求数据
-            data = {
-                'phone': username,
-                'pwd': password,
-                'num': steps
-            }
-             
-            logger.info(f"准备提交 - 账号: {username}, 步数: {steps}")
-             
-            # 发送请求
-            response = self.session.post(
-                self.base_url,
-                data=data,
-                headers=self.headers,
-                timeout=30
-            )
-             
-            # 解析响应
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('code') == 200:
-                    return True, f"提交成功! 步数: {steps}"
-                else:
-                    error_msg = result.get('data', '未知错误')
-                    # 处理频繁提交的情况
-                    if '频繁' in error_msg:
-                        return False, "提交过于频繁，请稍后再试"
-                    else:
-                        return False, f"提交失败: {error_msg}"
-            else:
-                return False, f"HTTP错误: {response.status_code}"
-                 
-        except requests.exceptions.RequestException as e:
-            return False, f"网络请求错误: {str(e)}"
-        except json.JSONDecodeError:
-            return False, "响应解析错误"
-        except Exception as e:
-            return False, f"未知错误: {str(e)}"
-     
-    def run(self):
-        """主执行函数"""
-        logger.info("开始执行步数提交任务")
-        logger.info(f"共有 {len(ACCOUNTS)} 个账号需要处理")
-         
-        success_count = 0
-        fail_count = 0
-         
-        for i, account in enumerate(ACCOUNTS, 1):
-            logger.info(f"处理第 {i}/{len(ACCOUNTS)} 个账号: {account['username']}")
-             
-            try:
-                # 获取当前应提交的步数
-                steps = self.get_current_steps()
-                 
-                # 提交步数
-                success, message = self.submit_steps(
-                    account['username'], 
-                    account['password'], 
-                    steps
-                )
-                 
-                if success:
-                    success_count += 1
-                    logger.info(f"&#10003; 账号 {account['username']} - {message}")
-                else:
-                    fail_count += 1
-                    logger.error(f"&#10007; 账号 {account['username']} - {message}")
-                 
-            except Exception as e:
-                fail_count += 1
-                logger.error(f"&#10007; 账号 {account['username']} - 处理异常: {str(e)}")
-             
-            # 账号间间隔（最后一个账号不需要等待）
-            if i < len(ACCOUNTS):
-                logger.info("等待5秒后处理下一个账号...")
-                time.sleep(5)
-         
-        # 汇总结果
-        logger.info(f"任务完成! 成功: {success_count}, 失败: {fail_count}")
-         
-        return success_count, fail_count
- 
-def main():
-    """主函数（青龙面板入口）"""
+            print("错误:无法解析出有效的 app_token ,Code={res.status_code}")
+            return None
+    else:
+        print(f"错误:无法获取到有效的 app_token ,Code={res.status_code}")
+        return None
+
+def change_steps(account, user_id, app_token, steps):
+    # 修改步数
+    sec_timestamp = get_sec_timestamp()
+    if sec_timestamp is None:
+        sec_timestamp = int(time.time())
+        print(f"警告:NTP 时间获取失败,使用系统时间{sec_timestamp}")
+    
+    dateToday = time.strftime("%F")
+    deviceID = "0000000000000000"
+    
+    dataJSON = "%5b%7b%22data_hr%22%3a%22" + "%5c%2fv7%2b"*480 + f"%22%2c%22date%22%3a%22{dateToday}%22%2c%22data%22%3a%5b%7b%22start%22%3a0%2c%22stop%22%3a1439%2c%22value%22%3a%22" + "A"*5760 + f"%22%2c%22tz%22%3a32%2c%22did%22%3a%22{deviceID}%22%2c%22src%22%3a24%7d%5d%2c%22summary%22%3a%22%7b%5c%22v%5c%22%3a6%2c%5c%22slp%5c%22%3a%7b%5c%22st%5c%22%3a0%2c%5c%22ed%5c%22%3a0%2c%5c%22dp%5c%22%3a0%2c%5c%22lt%5c%22%3a0%2c%5c%22wk%5c%22%3a0%2c%5c%22usrSt%5c%22%3a-1440%2c%5c%22usrEd%5c%22%3a-1440%2c%5c%22wc%5c%22%3a0%2c%5c%22is%5c%22%3a0%2c%5c%22lb%5c%22%3a0%2c%5c%22to%5c%22%3a0%2c%5c%22dt%5c%22%3a0%2c%5c%22rhr%5c%22%3a0%2c%5c%22ss%5c%22%3a0%7d%2c%5c%22stp%5c%22%3a%7b%5c%22ttl%5c%22%3a{steps}%2c%5c%22dis%5c%22%3a0%2c%5c%22cal%5c%22%3a0%2c%5c%22wk%5c%22%3a0%2c%5c%22rn%5c%22%3a0%2c%5c%22runDist%5c%22%3a0%2c%5c%22runCal%5c%22%3a0%2c%5c%22stage%5c%22%3a%5b%5d%7d%2c%5c%22goal%5c%22%3a0%2c%5c%22tz%5c%22%3a%5c%2228800%5c%22%7d%22%2c%22source%22%3a24%2c%22type%22%3a0%7d%5d"
+    #dataJSON = URL_encode_dataJSON(dateToday, deviceID, steps)
+    print(f"信息:dataJSON={dataJSON}")
+    
+    headers0 = {
+        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "user-agent": "MiFit/6.12.0 (MCE16; Android 16; Density/1.5)",
+        "app_name": "com.xiaomi.hm.health",
+        "apptoken": app_token,
+    }
+    url0 = f"https://api-mifit-cn.huami.com/v1/data/band_data.json?&t={sec_timestamp}"
+    data0 = f"userid={user_id}&last_sync_data_time={sec_timestamp}&device_type=0&last_deviceid={deviceID}&data_json={dataJSON}"
+    
     try:
-        submitter = StepSubmitter()
-        success_count, fail_count = submitter.run()
-         
-        # 返回结果给青龙面板
-        if fail_count == 0:
-            print("所有账号提交成功!")
-            exit(0)
+        res0 = requests.post(url0, data=data0, headers=headers0)
+        res0_data = res0.json()
+        print(f"信息:账号:{account};步数={steps};返回结果={res0_data}")
+        if res0_data.get('message') == 'success':
+            return True
         else:
-            print(f"部分账号提交失败，成功: {success_count}, 失败: {fail_count}")
-            exit(1)
-             
+            return False
     except Exception as e:
-        logger.error(f"脚本执行异常: {str(e)}")
-        exit(1)
- 
+        print(f"错误:提交步数失败:{e}")
+        return False
+
+def get_sec_timestamp():
+    # 通过 NTP 服务器获取秒级时间戳
+    try:
+        NTP_SERVER = 'ntp.ntsc.ac.cn'
+        PORT = 123
+        NTP_FORMAT = '!12I'
+        NTP_DELTA = 2208988800
+        
+        client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client.settimeout(5)
+        
+        data = bytearray(48)
+        data[0] = 0x1B
+        
+        client.sendto(data, (NTP_SERVER, PORT))
+        data, address = client.recvfrom(1024)
+        
+        if data:
+            unpacked = struct.unpack(NTP_FORMAT, data[:48])
+            timestamp = unpacked[10] - NTP_DELTA
+            print(f"信息:成功通过 NTP 服务器获取到秒级时间戳,SecTimeStamp={timestamp}")
+            return int(timestamp)
+        
+        return None
+        
+    except socket.timeout:
+        print("错误:连接 NTP 服务器超时")
+        return None
+    except socket.gaierror:
+        print("错误:无法解析 NTP 服务器地址")
+        return None
+    except Exception as e:
+        print(f"错误:获取时间戳失败 - {e}")
+        return None
+    finally:
+        try:
+            client.close()
+        except:
+            pass
+
+
+def URL_encode_dataJSON(dateToday, deviceID, steps):
+    JSON_Frame = f'[{{"date":"{dateToday}","data":[{{"start":0,"stop":1439,"did":"{deviceID}","src":24}}],"summary":"{{\\"stp\\":{{\\"ttl\\":{steps}}}}}","source":24,"type":0}}]'   # 待编码 JSON 模板
+    Encoded_dataJSON = urllib.parse.quote(JSON_Frame, safe='')   # 对 JSON 进行 URL 编码
+    return Encoded_dataJSON
+
+
+# 主程序
 if __name__ == "__main__":
-    main()
+    # 从环境变量安全地获取 GitHub Secret 中的账号与密码
+    
+    # 用户账号组配置:每个账号可以设置固定步数或使用随机范围
+    # 配置格式: [账号, 密码, 步数设置]
+        # 步数值选定:
+        # - 固定值: 如 30000
+        # - 随机范围: [最小值, 最大值] 如 [25000, 55000]
+        # - None: 使用默认随机范围
+    AccountGroup = [
+        ['mt1dfnl@qq.com', 'abc114514', 88888],   # 使用默认随机步数
+        #['账号2', '密码2', [20000, 40000]],  # 使用随机范围20000-40000
+        #['账号3', '密码3', [30000, 50000]],  # 使用随机范围30000-50000
+        #['账号4', '密码4', 50000],  # 使用定值步数50000
+    ]
+    
+    # 默认随机范围（用于步数设置为None的情况）
+    DefaultRandomMin = 35000
+    DefaultRandomMax = 65000
+    
+    for i in AccountGroup:   # 遍历用户账号组中的每个账号信息并对每个用户账号执行步数刷取操作
+        account = i[0]
+        password = i[1]
+        step_config = i[2]
+        
+        # 根据步数配置类型确定最终步数
+        if step_config is None:
+            # 使用默认随机范围
+            step = random.randint(DefaultRandomMin, DefaultRandomMax)
+            print(f"信息:账号:{account},本次步数类型:默认范围随机,本次随机范围:[{DefaultRandomMin}-{DefaultRandomMax}],本次最终步数:{step}")
+        elif isinstance(step_config, list) and len(step_config) == 2:
+            # 使用自定义随机范围
+            random_min, random_max = step_config
+            step = random.randint(random_min, random_max)
+            print(f"信息:账号:{account},本次步数类型:自定义范围随机,本次随机范围:[{random_min}-{random_max}],本次最终步数:{step}")
+        else:
+            # 使用固定步数
+            step = step_config
+            print(f"信息:账号:{account},本次步数类型:定值,本次最终步数:{step}")
+        
+        # 登录获取token
+        login_token, userid = login(account, password)
+        if not login_token:
+            print(f'错误:账号:{account},登录失败')
+            continue
+        else:
+            print(f'信息:账号:{account},登录成功')
+        
+        # 获取app_token
+        app_token = get_app_token(login_token)
+        if not app_token:
+            print(f'错误:账号:{account},获取 app_token 失败')
+            continue
+        else:
+            print(f'信息:账号:{account},获取 app_token 成功')
+        
+        # 修改步数
+        result = change_steps(account, userid, app_token, str(step))
+        if result:
+            print(f'信息:账号:{account} 步数修改成功')
+        else:
+            print(f'错误:账号:{account} 步数修改失败')
+        
+        print("-" * 50)
