@@ -90,7 +90,7 @@ def change_steps(account, user_id, app_token, steps):
     
     dataJSON = "%5b%7b%22data_hr%22%3a%22" + "%5c%2fv7%2b"*480 + f"%22%2c%22date%22%3a%22{dateToday}%22%2c%22data%22%3a%5b%7b%22start%22%3a0%2c%22stop%22%3a1439%2c%22value%22%3a%22" + "A"*5760 + f"%22%2c%22tz%22%3a32%2c%22did%22%3a%22{deviceID}%22%2c%22src%22%3a24%7d%5d%2c%22summary%22%3a%22%7b%5c%22v%5c%22%3a6%2c%5c%22slp%5c%22%3a%7b%5c%22st%5c%22%3a0%2c%5c%22ed%5c%22%3a0%2c%5c%22dp%5c%22%3a0%2c%5c%22lt%5c%22%3a0%2c%5c%22wk%5c%22%3a0%2c%5c%22usrSt%5c%22%3a-1440%2c%5c%22usrEd%5c%22%3a-1440%2c%5c%22wc%5c%22%3a0%2c%5c%22is%5c%22%3a0%2c%5c%22lb%5c%22%3a0%2c%5c%22to%5c%22%3a0%2c%5c%22dt%5c%22%3a0%2c%5c%22rhr%5c%22%3a0%2c%5c%22ss%5c%22%3a0%7d%2c%5c%22stp%5c%22%3a%7b%5c%22ttl%5c%22%3a{steps}%2c%5c%22dis%5c%22%3a0%2c%5c%22cal%5c%22%3a0%2c%5c%22wk%5c%22%3a0%2c%5c%22rn%5c%22%3a0%2c%5c%22runDist%5c%22%3a0%2c%5c%22runCal%5c%22%3a0%2c%5c%22stage%5c%22%3a%5b%5d%7d%2c%5c%22goal%5c%22%3a0%2c%5c%22tz%5c%22%3a%5c%2228800%5c%22%7d%22%2c%22source%22%3a24%2c%22type%22%3a0%7d%5d"
     #dataJSON = URL_encode_dataJSON(dateToday, deviceID, steps)
-    print(f"信息:dataJSON={dataJSON}")
+    #print(f"信息:dataJSON={dataJSON}")
     
     headers0 = {
         "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -163,6 +163,8 @@ def URL_encode_dataJSON(dateToday, deviceID, steps):
 # 主程序
 if __name__ == "__main__":
     # 从环境变量安全地获取 GitHub Secret 中的账号与密码
+    ACCOUNT = os.environ.get("ACCOUNT", "")
+    PASSWORD = os.environ.get("PASSWORD", "")
     
     # 用户账号组配置:每个账号可以设置固定步数或使用随机范围
     # 配置格式: [账号, 密码, 步数设置]
@@ -171,7 +173,7 @@ if __name__ == "__main__":
         # - 随机范围: [最小值, 最大值] 如 [25000, 55000]
         # - None: 使用默认随机范围
     AccountGroup = [
-        ['mt1dfnl@qq.com', 'abc114514', 88888],   # 使用默认随机步数
+        [ACCOUNT, PASSWORD, 88888],   # 使用默认随机步数
         #['账号2', '密码2', [20000, 40000]],  # 使用随机范围20000-40000
         #['账号3', '密码3', [30000, 50000]],  # 使用随机范围30000-50000
         #['账号4', '密码4', 50000],  # 使用定值步数50000
