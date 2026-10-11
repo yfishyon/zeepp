@@ -1,0 +1,34 @@
+name: Keep Alive
+
+# 说明：GitHub 会在仓库 60 天没有任何提交/活动时自动停用定时 workflow。
+# 这个 workflow 每周自动提交一次时间戳，保持仓库活跃，避免签到任务被停用。
+on:
+  schedule:
+    - cron: '0 9 * * 0'  # 每周日 UTC 09:00（北京时间 17:00）
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update keep-alive timestamp
+        run: |
+          mkdir -p .github
+          date -u +"%Y-%m-%d %H:%M:%S UTC" > .github/KEEPALIVE.md
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/KEEPALIVE.md
+          if git diff --cached --quiet; then
+            echo "No changes, skipping commit."
+          else
+            git commit -m "chore: keep-alive 自动提交 [skip ci]"
+            git push
+          fi
